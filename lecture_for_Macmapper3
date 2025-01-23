@@ -1,0 +1,138 @@
+lecture_for_Macmapper3
+explanation for code and operational conduct
+import os  ---> provides function to interact with os 
+import subprocess --> to excute shellcommand eg scanning for wifi netwroks
+import threading --> for faster network scanning
+import csv --> csv file creation and scanning
+from datetime import datetime --> provides tools to work with dates and time eg timestamps
+from json --> saves file in JSON format
+from scapy.all import ARP, Ether, srp --> network packets manipulations for crafting ARP andn ethernet packets
+
+#Functions
+def scan_wifi():
+    print("Scanning for available Wi-Fi networks...")
+    networks = []
+    try:
+        result = subprocess.check_output("nmcli -f SSID,BSSID,SIGNAL dev wifi", shell=True, text=True)
+        lines = result.splitlines()[1:]  # Skip the header
+        for line in lines:
+            parts = [item.strip() for item in line.split()]
+            if len(parts) >= 2:
+                ssid = parts[0]
+                bssid = parts[1]
+                signal = parts[2] if len(parts) > 2 else "N/A"
+                networks.append({"SSID": ssid, "MAC": bssid, "Signal": signal})
+    except Exception as e:
+        print(f"Error scanning Wi-Fi networks: {e}")
+    return networks
+#nmcli scans for wifi networks using nmcli 
+#extract BSSID <mac> and signal strength 
+#returns list of networks ssid,mac and signal
+____#SELECTING WIFI NETWORKS
+
+def select_wifi_network(networks):
+    if not networks:
+        print("No Wi-Fi networks found.")
+        return None
+    print("\nAvailable Wi-Fi Networks:")
+    for idx, net in enumerate(networks):
+        print(f"{idx + 1}. SSID: {net['SSID']}, MAC: {net['MAC']}, Signal: {net['Signal']}")
+    while True:
+        try:
+            choice = int(input("\nEnter the number of the Wi-Fi network to scan (0 to cancel): "))
+            if choice == 0:
+                return None
+            if 1 <= choice <= len(networks):
+                return networks[choice - 1]
+        except ValueError:
+            print("Invalid input. Please enter a number corresponding to a Wi-Fi network.")
+***Display available networks and lets the user select one
+*** Returns selected network as a dictionary or none if canceled
+
+#SCAN NETWORK
+def scan_network(mac_address, network, results, lock):
+    try:
+        arp_request = ARP(pdst=network)
+        broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
+        packet = broadcast / arp_request
+        answered_packets = srp(packet, timeout=2, verbose=0)[0]
+
+        for _, response in answered_packets:
+            if response.hwsrc.lower() == mac_address.lower():
+                with lock:
+                    results.append({
+                        "MAC Address": mac_address,
+                        "IP Address": response.psrc,
+                        "Detected At": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
+    except Exception as e:
+        print(f"Error scanning network {network}: {e}")
+**Uses arp request to probe a network subnet for devices
+*** check if any device matches mac address
+***results are appended to a shared list using athread-safe lock
+
+
+##SAVE TO CSV AND TO JSON()
+def save_to_csv(results, filename="results.csv"):
+    with open(filename, "w", newline="") as csvfile:
+        fieldnames = ["MAC Address", "IP Address", "Detected At"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(results)
+
+def save_to_json(results, filename="results.json"):
+    with open(filename, "w") as jsonfile:
+        json.dump(results, jsonfile, indent=4)
+**to save the scan reults in files in csv and json formats
+
+##MACMAPPER WITH WIFI 
+def mac_mapper_with_wifi():
+    networks = scan_wifi()
+    selected_network = select_wifi_network(networks)
+    if not selected_network:
+        print("No network selected. Exiting.")
+        return
+
+    mac_address = selected_network["MAC"]
+    print(f"Selected Wi-Fi Network:\nSSID: {selected_network['SSID']}, MAC: {mac_address}")
+
+    network = "192.168.1.0/24"  # Placeholder for actual network
+    print(f"Scanning network {network} for devices with MAC {mac_address}...")
+
+    results = []
+    lock = threading.Lock()
+    threads = []
+
+    ip_prefix = network.split('/')[0].rsplit('.', 1)[0]
+    for i in range(0, 256):
+        subnet = f"{ip_prefix}.{i}/24"
+        thread = threading.Thread(target=scan_network, args=(mac_address, subnet, results, lock))
+        threads.append(thread)
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    if results:
+        print(f"\nIP address(es) for MAC {mac_address}:")
+        for res in results:
+            print(f"IP: {res['IP Address']}, Detected At: {res['Detected At']}")
+        save_to_csv(results)
+        save_to_json(results)
+    else:
+        print(f"No IP address found for MAC {mac_address} on network {network}.")
+
+**scan wifi networks
+**let user select a network
+**scan the selected network for devices with the target mac address
+**save results in cvs/json formats
+
+
+#CODE WORKING PRINCIPLE
+
+1. WIFI scanning using nmcli for scanning list of wifi networks
+2. user interaction giving user ability to select from varaities of network
+3.Scanning networks using arp request to probe each subnet for devices 
+matching the target MAC
+4. Threading for multiple performance
+5. Storage: stores result of detected devices in csv/json

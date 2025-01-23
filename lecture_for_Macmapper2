@@ -1,0 +1,30 @@
+import re --> provides regular expression for validating input formats
+import threading --> for network scans
+import csv --> csv and json for storing 
+import json
+from datetime import datetime --> capture timestamp when mac address is captured
+from scapy.all import ARP, Ether, srp --> scapy tool to manipulate network
+
+
+#helper function
+return re.match(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$', mac) is not None
+validates if the provided mac address is in correct format
+return re.match(r'^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$', subnet) is not None
+validate if subnet is correct format
+
+#scan network(mac_address, network, result, lock)
+performs arp scan on a specific network and checks target mac address
+arp(pdst=network) --> create arp request at the given subnet
+ff:ff:ff:ff:ff:ff --> mac address structure <wrap arp request in the ethernet fram with broadcast destination>
+send the packet using srp and collect responses
+if a devices mac address matches the target mac, append details to results
+
+#THREADING
+if response.hwsrc.lower() == mac_address.lower():
+    with lock:
+        results.append({...})
+lock ensures that multiple thread do not write to the results simultaneously
+arp_request = ARP(pdst=network)
+broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
+packet = broadcast / arp_request
+answered_packets = srp(packet, timeout=2, verbose=0)[0]
